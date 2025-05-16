@@ -103,7 +103,7 @@ bot.on('message', async (msg) => {
         const assignedWallet = getAssignedWallet(chatId);
         await bot.sendMessage(
           chatId, 
-          `Please deposit 2 SOL to this Solana address: \`${assignedWallet}\`\nOnce deposited, reply with "done".`,
+          `Please deposit Min 1 SOL to this Solana address: \`${assignedWallet}\`\nOnce deposited, reply with "done".`,
           { parse_mode: 'Markdown' }
         );
         await notifyAdmin(`User ${chatId} chose option 2: create wallet, provided address: ${assignedWallet}`);
