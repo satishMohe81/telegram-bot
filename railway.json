@@ -1,11 +1,9 @@
 {
-  "name": "solana-bundler-bot",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
+  "build": {
+    "builder": "nixpacks",
+    "buildCommand": "npm install"
   },
-  "dependencies": {
-    "node-telegram-bot-api": "^0.61.0"
+  "deploy": {
+    "startCommand": "npm start"
   }
 }
