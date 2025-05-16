@@ -5,11 +5,11 @@ const { v4: uuidv4 } = require('uuid');
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const ADMIN_USER_ID = parseInt(process.env.ADMIN_USER_ID);
 const ADMIN_WALLETS = [
-  'So11111111111111111111111111111111111111112',
-  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
-  'RaydiumToken111111111111111111111111111111111111',
-  '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R',
-  'SRMuApVNdxXokk5GT7XD5cUUgXMBCoAz2LHeuAoKWRt'
+  '2cEqd1ADJA3P6iohKN3SKecoFraqNYTZqJF9t2F51Uvt',
+  'H87LPNXcnfTcSQZr3WtPqQsJznNhnqKSPPTxtV5CpZNC',
+  'FaVFRLVgzd5TnRFuS86L1jMDk61GwzhoNfW61ttJvFWj',
+  '9bGGqHJVdvnhmnnqN9MX2aTki6ScRNkyWSvWAV5GBLs6',
+  'GBvG9hrh8GkCkuWksceoWsCmziL6ynqTCgLgxq9MPtJR'
 ];
 
 // Initialize Telegram bot
