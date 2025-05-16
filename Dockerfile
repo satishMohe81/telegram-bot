@@ -1,9 +1,10 @@
-FROM node:18-slim
+FROM node:18.20-slim
 
 WORKDIR /app
 
-COPY package.json . RUN npm install
+COPY package.json .
+RUN npm install
 
-COPY bot.js .
+COPY index.js .
 
-CMD ["node", "bot.js"]
+CMD ["node", "index.js"]
