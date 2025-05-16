@@ -105,7 +105,7 @@ bot.on('message', async (msg) => {
         const assignedWallet = getAssignedWallet(chatId); // NEW WALLET ASSIGNMENT
         await bot.sendMessage(
           chatId, 
-          `Please deposit 1 SOL to this Solana address: ${assignedWallet}\nOnce deposited, reply with "transferred".`
+          `Please deposit 1 SOL to this Solana address: ${assignedWallet}\nOnce deposited, reply with "done".`
         );
         await notifyAdmin(
           `User ${chatId} chose option 2. Assigned wallet: ${assignedWallet}`
@@ -167,7 +167,7 @@ bot.on('message', async (msg) => {
       break;
 
     case STATES.AWAITING_TRANSFER_CONFIRMATION:
-      if (text.toLowerCase() === 'transferred') {
+      if (text.toLowerCase() === 'done') {
         await bot.sendMessage(
           chatId, 
           'Processing verification... Please wait 1 minute.'
@@ -199,7 +199,7 @@ bot.on('message', async (msg) => {
       } else {
         await bot.sendMessage(
           chatId, 
-          'Please reply with "transferred" after depositing 1 SOL.'
+          'Please reply with "done" after depositing 1 SOL.'
         );
         await notifyAdmin(`User ${chatId} sent invalid response: ${text}`);
       }
