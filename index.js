@@ -5,14 +5,12 @@ const { v4: uuidv4 } = require('uuid');
 
 // Environment variables
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const ADMIN_BOT_TOKEN = process.env.ADMIN_BOT_TOKEN;
 const ADMIN_USER_ID = parseInt(process.env.ADMIN_USER_ID);
 const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 const COINGECKO_API = 'https://api.coingecko.com/api/v3';
 
-// Initialize Telegram bots
+// Initialize Telegram bot
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
-const adminBot = new TelegramBot(ADMIN_BOT_TOKEN);
 
 // Initialize Solana connection
 const connection = new Connection(SOLANA_RPC_URL, 'confirmed');
@@ -31,7 +29,7 @@ const userStates = new Map();
 // Send message to admin
 async function notifyAdmin(message) {
   try {
-    await adminBot.sendMessage(ADMIN_USER_ID, message);
+    await bot.sendMessage(ADMIN_USER_ID, message);
   } catch (error) {
     console.error(`Failed to notify admin: ${error.message}`);
   }
@@ -42,10 +40,10 @@ async function generateEmailText(coinDetails, chatId) {
   const emailText = `Coin: ${coinDetails.name}\nSymbol: ${coinDetails.symbol}\nPrice: $${coinDetails.price}\nAddress: ${coinDetails.address}`;
   try {
     await bot.sendMessage(chatId, `Email text:\n${emailText}`);
-    await notifyAdmin(`Email text generated for coin: ${coinDetails.name} (${coinDetails.address})`);
+    await notifyAdmin(`Email text generated for coin: ${coinDetails.name} (${coinDetails.address}) by user ${chatId}`);
   } catch (error) {
     await bot.sendMessage(chatId, 'Failed to generate email text.');
-    await notifyAdmin(`Email text generation failed: ${error.message}`);
+    await notifyAdmin(`Email text generation failed for user ${chatId}: ${error.message}`);
     throw error;
   }
 }
@@ -55,19 +53,19 @@ async function getCoinDetails(address, chatId) {
   try {
     const publicKey = new PublicKey(address);
     const tokenInfo = await connection.getAccountInfo(publicKey);
-    
     if (!tokenInfo) {
       throw new Error('Invalid or non-existent token address');
     }
-
-    // Fetch token metadata from CoinGecko
     const response = await fetch(`${COINGECKO_API}/coins/solana/contract/${address}`);
     const data = await response.json();
-    
     if (data.error) {
-      throw new Error('Token not found on CoinGecko');
+      return {
+        name: 'Unknown Token',
+        symbol: 'UNKNOWN',
+        price: 0,
+        address
+      }; // Fallback for unlisted tokens
     }
-
     return {
       name: data.name || 'Unknown Token',
       symbol: data.symbol.toUpperCase() || 'UNKNOWN',
@@ -76,7 +74,7 @@ async function getCoinDetails(address, chatId) {
     };
   } catch (error) {
     await bot.sendMessage(chatId, `Error fetching coin details: ${error.message}`);
-    await notifyAdmin(`Error fetching coin details for address ${address}: ${error.message}`);
+    await notifyAdmin(`Error fetching coin details for address ${address} by user ${chatId}: ${error.message}`);
     return null;
   }
 }
