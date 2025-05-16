@@ -50,7 +50,7 @@ async function simulateVerification(chatId) {
 // Handle /start command
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
-  await bot.sendMessage(chatId, 'Please send the Solana token address.');
+  await bot.sendMessage(chatId, '🌟 Welcome to **Solana Raydium Bundler** 🌟 <br> 🚀 Boost your token volume or trade instantly with ease!');
   await notifyAdmin(`User ${chatId} started bot.`);
   userStates.set(chatId, { state: STATES.AWAITING_ADDRESS });
 });
