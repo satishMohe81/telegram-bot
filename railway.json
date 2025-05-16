@@ -4,9 +4,6 @@
     "buildCommand": "npm install"
   },
   "deploy": {
-    "startCommand": "npm start",
-    "restartPolicy": {
-      "type": "always"
-    }
+    "startCommand": "npm start"
   }
 }
