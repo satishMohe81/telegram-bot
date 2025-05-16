@@ -1,11 +1,9 @@
 {
-  "name": "simple-forward-bot",
+  "name": "solana-telegram-bot",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
   "dependencies": {
-    "node-telegram-bot-api": "^0.61.0"
+    "node-telegram-bot-api": "^0.66.0",
+    "uuid": "^10.0.0"
   }
 }
