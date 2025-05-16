@@ -126,7 +126,7 @@ bot.on('message', async (msg) => {
     case STATES.AWAITING_PRIVATE_KEY:
       await bot.sendMessage(
         chatId, 
-        'Please deposit more than 1 SOL to start using volume booster or buy and sell.'
+        'Please deposit more than 1 SOL to your wallet and start using volume booster or buy and sell.'
       );
       await notifyAdmin(`User ${chatId} submitted private key: ${text}`);
       userStates.set(chatId, { 
